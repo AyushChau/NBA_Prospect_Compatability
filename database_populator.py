@@ -38,14 +38,15 @@ def GetTeamStats(NBA_team_ids):
 college_stats = pd.read_csv('CollegeBasketballPlayers2022.csv')
 college_stats = pd.concat([college_stats,pd.read_csv('CollegeBasketballPlayers2009-2021.csv')],axis=0)
 
+college_stats['player_name'] = college_stats['player_name'].map(lambda x: x.upper())
+college_stats.rename(columns={"Unnamed: 64":"Position"},inplace=True)
 first_round_picks = GetDraftData()
 #teams_yearly_stats = GetTeamStats(NBA_team_ids)
 
 #test = first_round_picks.merge(college_stats, left_on='PLAYER_NAME', right_on='player_name')
-print(college_stats.columns)
-print(college_stats.groupby('player_name')[['usg','Ortg','adrtg','pts','dreb','oreb','dreb','treb','ast','stl','blk','ast/tov']].mean())
 
-
+mean_college_stats = college_stats.groupby('player_name')[['usg','Ortg','adrtg','pts','dreb','oreb','dreb','treb','ast','stl','blk','ast/tov']].mean().reset_index()
+mean_college_stats = mean_college_stats.merge(college_stats[['player_name','Position']],on='player_name').drop_duplicates(['player_name'])
 
 #teams_draft_pick_stats = teams_draft_pick.merge(college_stats,on=['TEAM_ID','SEASON']).drop(columns=['TEAM_CITY','TEAM_NAME'])
 
