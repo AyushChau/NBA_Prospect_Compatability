@@ -7,7 +7,6 @@ NBA_team_ids = [1610612759, 1610612765, 1610612753, 1610612754, 1610612749, 1610
  1610612738, 1610612739, 1610612748, 1610612764, 1610612746, 1610612758,
  1610612741, 1610612757, 1610612760, 1610612761, 1610612737, 1610612752,
  1610612745, 1610612744, 1610612747, 1610612743, 1610612762]
-Colleges = None
 
 # Used to get Historical Draft data from nba_api
 def GetDraftData():
@@ -15,9 +14,9 @@ def GetDraftData():
     drafts = nba.DraftHistory()
     draft_df = pd.DataFrame(drafts.get_data_frames()[0])
     draft_df['TEAM'] = draft_df['TEAM_CITY'] + ' ' + draft_df['TEAM_NAME']
-    draft_df_frp = draft_df[(draft_df['OVERALL_PICK'] <= 30) & (draft_df['OVERALL_PICK'] > 0)]
+    draft_df_frp = draft_df[(draft_df['OVERALL_PICK'] <= 30) & (draft_df['OVERALL_PICK'] > 0) & (draft_df['SEASON'] == '2023')]
+    
     return draft_df_frp[['PERSON_ID','PLAYER_NAME','SEASON','OVERALL_PICK','TEAM_ID','TEAM']]
-
 
 
 # Used to get Team stats per year (which will be useful in deciding what the team needs are)
@@ -30,18 +29,35 @@ def GetTeamStats(NBA_team_ids):
         team_df = pd.DataFrame(team_stats.get_data_frames()[0])
         teams_df = pd.concat([teams_df,team_df],axis=0)
 
-    teams_df['SEASON'] = teams_df['YEAR'].map(lambda x: x.split('-')[0][:2] + x.split('-')[1]) # This is used to decide the Draft Season and correlate it to the stats
-    teams_df['DRAFTED_SEASON'] = teams_df['YEAR'].map(lambda x: str(int(x.split('-')[0][:2] + x.split('-')[1]) - 1))
+    teams_df['SEASON'] = teams_df['YEAR'].map(lambda x: x.split('-')[0]) # This is used to decide the Draft Season and correlate it to the stats
+
+    teams_df = teams_df[(teams_df['SEASON'] == '2023') | (teams_df['SEASON'] == '2022')]
     return teams_df
 
 
-#Player college stats
-# college_stats = pd.read_csv('CollegeBasketballPlayers2022.csv')
-# college_stats = pd.concat([college_stats,pd.read_csv('CollegeBasketballPlayers2009-2021.csv')],axis=0)
-# college_stats['player_name'] = college_stats['player_name'].map(lambda x: x.upper())
-# college_stats.rename(columns={"Unnamed: 64":"Position"},inplace=True)
-# mean_college_stats = college_stats.groupby('player_name')[['usg','Ortg','adrtg','pts','dreb','oreb','dreb','treb','ast','stl','blk','ast/tov']].mean().reset_index()
-# mean_college_stats = mean_college_stats.merge(college_stats[['player_name','Position']],on='player_name').drop_duplicates(['player_name'])
+def GetPlayerRookieStats(picks):
+    rookie_stats = nba.PlayerCareerStats(player_id=picks)
+    rookie_stats_df = pd.DataFrame(rookie_stats.get_data_frames()[0])
+    rookie_stats_df = rookie_stats_df[['PLAYER_ID','GP','GS','MIN','FGM','FGA','FG_PCT','FG3M','FG3A','FG3_PCT','FTM','FTA','FT_PCT','OREB','DREB','AST','STL','BLK','TOV','PTS']]
+    rookie_stats_df = rookie_stats_df.head(1)
+
+    for pick in picks[1:]:
+        rookie_stats = nba.PlayerCareerStats(player_id=pick)
+        stats_df = pd.DataFrame(rookie_stats.get_data_frames()[0])
+        stats_df = stats_df[['PLAYER_ID','GP','GS','MIN','FGM','FGA','FG_PCT','FG3M','FG3A','FG3_PCT','FTM','FTA','FT_PCT','OREB','DREB','AST','STL','BLK','TOV','PTS']]
+        stats_df = stats_df.head(1)
+        # print(stats_df)
+        rookie_stats_df = pd.concat([rookie_stats_df,stats_df],axis=0)
+
+    return rookie_stats_df
+
+
+def GetYearlyChange(teams_yearly_stats):
+    changes = teams_yearly_stats.groupby('TEAM_ID')[['WINS','FGM','FGA','FG_PCT','FG3M','FG3A','FG3_PCT','FTM','FTA','FT_PCT','OREB','DREB','REB','AST','PTS','STL','BLK','TOV']].diff()
+
+    changes.columns = ['Team_' + col + '_change' for col in changes.columns]
+    teams_stat_changes = pd.concat([teams_yearly_stats, changes], axis=1).dropna()
+    return teams_stat_changes[['TEAM_ID','SEASON','Team_WINS_change','Team_FGM_change','Team_FGA_change','Team_FG_PCT_change','Team_FG3M_change','Team_FG3A_change','Team_FG3_PCT_change','Team_FTM_change','Team_FTA_change','Team_FT_PCT_change','Team_OREB_change','Team_DREB_change','Team_REB_change','Team_AST_change','Team_PTS_change','Team_STL_change','Team_BLK_change','Team_TOV_change']]
 
 
 #Draft Picts
@@ -49,24 +65,23 @@ first_round_picks = GetDraftData()
 first_round_picks['PLAYER_NAME'] = first_round_picks['PLAYER_NAME'].map(lambda x: x.upper())
 
 
-#Team Stats in previous year
-#teams_yearly_stats = GetTeamStats(NBA_team_ids)
-#print(teams_yearly_stats[teams_yearly_stats['DRAFTED_SEASON'] == '2023'])
-#teams_yearly_stats = teams_yearly_stats[['TEAM_ID','SEASON','DRAFTED_SEASON','WINS','LOSSES','WIN_PCT','FGM','FGA','FG_PCT','FG3M','FG3A','FG3_PCT','FT_PCT','OREB','DREB','REB','AST','PF','STL','TOV','BLK','PTS','PTS_RANK']]
+#Rookie season stats for draft pick
 
-test = nba.PlayerCareerStats(player_id=77869)
-test_db = pd.DataFrame(test.get_data_frames()[0])
+rookie_season_stats = GetPlayerRookieStats(list(first_round_picks['PERSON_ID'].unique()))
 
-print(test_db.columns)
-#frp_college_stats = first_round_picks.merge(mean_college_stats, left_on='PLAYER_NAME', right_on='player_name')
+frp_season_stats = first_round_picks.merge(rookie_season_stats, left_on='PERSON_ID', right_on='PLAYER_ID').drop('PLAYER_ID',axis=1)
 
 
-#teams_draft_pick_stats = first_round_picks.merge(teams_yearly_stats,on=['SEASON','TEAM_ID'])
+
+#Team Stats changes after draft pick
+teams_yearly_stats = GetTeamStats(NBA_team_ids)
 
 
-#print(frp_college_stats[['PLAYER_NAME','pts']])
+teams_stat_changes = GetYearlyChange(teams_yearly_stats)
 
-#print(teams_draft_pick_stats[teams_draft_pick_stats['STL'] > 0])
+draft_pick_impact = frp_season_stats.merge(teams_stat_changes,on=['SEASON','TEAM_ID'])
+
+print(draft_pick_impact)
 
 
 
